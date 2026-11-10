@@ -80,6 +80,34 @@ async function writeData(data) {
   await rename(tempFile, DATA_FILE);
 }
 
+async function initializeData() {
+  await mkdir(DATA_DIR, { recursive: true });
+  try {
+    await readFile(DATA_FILE, 'utf-8');
+    return;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const data = await readData();
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim();
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  if (email && password) {
+    data.users.push({
+      id: `usr_${crypto.randomBytes(8).toString('hex')}`,
+      name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || 'Administratör',
+      email,
+      role: 'admin',
+      active: true,
+      projectIds: [],
+      passwordHash: hashPassword(password),
+      sessionToken: null,
+      sessionTokens: [],
+    });
+  }
+  await writeData(data);
+}
+
 function publicUser(user) {
   const { passwordHash, sessionToken, sessionTokens, ...safeUser } = user;
   return safeUser;
@@ -483,6 +511,7 @@ app.post('/api/timeReports/submit-week', requireAuth, async (req, res) => {
 // Starta servern
 // ------------------------------------------------------------------
 
+await initializeData();
 const server = app.listen(PORT, HOST, () => {
   const address = server.address();
   console.log(`Bygglogg körs på http://${HOST}:${address.port}`);

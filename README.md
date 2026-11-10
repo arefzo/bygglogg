@@ -85,6 +85,7 @@ Minimalistisk nordisk palett: varm beige canvas, vita kort, slategrå navigation
 - Inloggade webbläsare hämtar serverändringar automatiskt var fjärde sekund. Inloggning fungerar samtidigt på flera enheter.
 - Servern skriver filen atomiskt och köar samtidiga ändringar för att undvika att två enheter skriver över varandra.
 - För Render ska en persistent disk monteras på `/var/data` med miljövariabeln `DATA_DIR=/var/data`. Render Free har ett tillfälligt filsystem och får inte användas för permanent JSON-lagring.
+- När Render-disken är tom skapas administratörskontot från `BOOTSTRAP_ADMIN_EMAIL` och `BOOTSTRAP_ADMIN_PASSWORD`. Blueprinten ber om lösenordet privat; lösenordet läggs inte i GitHub.
 - Starta lokalt med `npm start`. Ange `DATA_DIR` för att spara i en annan mapp.
 
 ## Begränsningar

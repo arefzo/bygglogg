@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,26 +10,6 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 test('server data persists, syncs between clients, and keeps multi-device sessions', async (t) => {
   const dataDir = await mkdtemp(join(tmpdir(), 'bygglogg-sync-'));
-  const passwordHash = createHash('sha256').update('test-password').digest('hex');
-  await writeFile(join(dataDir, 'data.json'), JSON.stringify({
-    version: 1,
-    revision: 0,
-    settings: { companyName: 'Test AB' },
-    projects: [],
-    users: [{
-      id: 'admin-1',
-      name: 'Test Admin',
-      email: 'admin@example.test',
-      role: 'admin',
-      active: true,
-      projectIds: [],
-      passwordHash,
-      sessionToken: null,
-      sessionTokens: [],
-    }],
-    templates: [], activities: [], entries: [], timeReports: [],
-    inspections: [], photos: {}, drawings: [], fika: [],
-  }));
 
   let child;
   let output = '';
@@ -39,7 +18,14 @@ test('server data persists, syncs between clients, and keeps multi-device sessio
   async function startServer() {
     child = spawn(process.execPath, ['server.mjs'], {
       cwd: ROOT,
-      env: { ...process.env, HOST: '127.0.0.1', PORT: '0', DATA_DIR: dataDir },
+      env: {
+        ...process.env,
+        HOST: '127.0.0.1',
+        PORT: '0',
+        DATA_DIR: dataDir,
+        BOOTSTRAP_ADMIN_EMAIL: 'admin@example.test',
+        BOOTSTRAP_ADMIN_PASSWORD: 'test-password',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.setEncoding('utf8');
