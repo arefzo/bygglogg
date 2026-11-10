@@ -1,18 +1,39 @@
 // Bygglogg – Express-server med API för datalagring på servern.
 // Kör: node server.mjs
 import express from 'express';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
-const PORT = Number(process.env.PORT) || 4173;
-const HOST = process.env.PORT ? '0.0.0.0' : '127.0.0.1';
-const DATA_FILE = join(ROOT, 'data.json');
+const PORT = process.env.PORT === undefined ? 4173 : Number(process.env.PORT);
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+const DATA_DIR = resolve(process.env.DATA_DIR || ROOT);
+const DATA_FILE = join(DATA_DIR, 'data.json');
 
 const app = express();
 app.use(express.json());
+
+// A persistent disk is attached to one Render instance. Serialize all writes
+// so two devices editing at once cannot overwrite one another's updates.
+let writeQueue = Promise.resolve();
+app.use('/api', async (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const previousWrite = writeQueue;
+  let releaseWrite;
+  writeQueue = new Promise((resolve) => { releaseWrite = resolve; });
+  await previousWrite;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    releaseWrite();
+  };
+  res.once('finish', release);
+  res.once('close', release);
+  next();
+});
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -22,9 +43,11 @@ async function readData() {
   try {
     const raw = await readFile(DATA_FILE, 'utf-8');
     return JSON.parse(raw);
-  } catch {
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
     return {
       version: 1,
+      revision: 0,
       settings: {
         companyName: 'INCON AB',
         orgNumber: '556123-4567',
@@ -49,7 +72,17 @@ async function readData() {
 }
 
 async function writeData(data) {
-  await writeFile(DATA_FILE, JSON.stringify(data, null, 2));
+  await mkdir(DATA_DIR, { recursive: true });
+  data.revision = (Number(data.revision) || 0) + 1;
+  data.updatedAt = new Date().toISOString();
+  const tempFile = join(DATA_DIR, `.data-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`);
+  await writeFile(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+  await rename(tempFile, DATA_FILE);
+}
+
+function publicUser(user) {
+  const { passwordHash, sessionToken, sessionTokens, ...safeUser } = user;
+  return safeUser;
 }
 
 async function requireAuth(req, res, next) {
@@ -58,7 +91,7 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Inloggning krävs' });
   }
   const data = await readData();
-  const user = data.users.find((u) => u.sessionToken === token);
+  const user = data.users.find((u) => u.sessionToken === token || u.sessionTokens?.includes(token));
   if (!user) {
     return res.status(401).json({ error: 'Ogiltig inloggning' });
   }
@@ -73,6 +106,8 @@ async function requireAuth(req, res, next) {
 app.get('/', (_req, res) => {
   res.sendFile(join(ROOT, 'index.html'));
 });
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/assets/*', (req, res) => {
   const filePath = join(ROOT, req.path);
@@ -106,6 +141,8 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Felaktig e-postadress eller lösenord' });
   }
   const token = crypto.randomBytes(32).toString('hex');
+  user.sessionTokens = Array.isArray(user.sessionTokens) ? user.sessionTokens : [];
+  user.sessionTokens = [...user.sessionTokens.filter((existing) => existing !== token), token].slice(-20);
   user.sessionToken = token;
   await writeData(data);
   res.json({
@@ -124,9 +161,10 @@ app.post('/api/logout', async (req, res) => {
   const token = req.headers.authorization;
   if (token) {
     const data = await readData();
-    const user = data.users.find((u) => u.sessionToken === token);
+    const user = data.users.find((u) => u.sessionToken === token || u.sessionTokens?.includes(token));
     if (user) {
-      user.sessionToken = null;
+      user.sessionTokens = (user.sessionTokens ?? []).filter((existing) => existing !== token);
+      if (user.sessionToken === token) user.sessionToken = user.sessionTokens.at(-1) ?? null;
       await writeData(data);
     }
   }
@@ -153,7 +191,8 @@ app.get('/api/me', requireAuth, async (req, res) => {
 function crudRoutes(app, entity, idField = 'id') {
   app.get(`/api/${entity}`, requireAuth, async (_req, res) => {
     const data = await readData();
-    res.json(data[entity] ?? []);
+    const records = data[entity] ?? [];
+    res.json(entity === 'users' ? records.map(publicUser) : records);
   });
 
   app.post(`/api/${entity}`, requireAuth, async (req, res) => {
@@ -224,6 +263,19 @@ crudRoutes(app, 'timeReports');
 crudRoutes(app, 'inspections');
 crudRoutes(app, 'drawings');
 crudRoutes(app, 'fika');
+
+// Clients poll this compact, versioned snapshot to pick up changes from other
+// devices. Credential hashes and session tokens are never included.
+app.get('/api/sync', requireAuth, async (req, res) => {
+  const data = await readData();
+  const revision = Number(data.revision) || 0;
+  if (Number(req.query.since) === revision) return res.status(304).end();
+  res.json({
+    revision,
+    updatedAt: data.updatedAt ?? null,
+    data: { ...data, users: (data.users ?? []).map(publicUser) },
+  });
+});
 
 app.post('/api/fika/:id/toggle', requireAuth, async (req, res) => {
   const data = await readData();
@@ -431,6 +483,7 @@ app.post('/api/timeReports/submit-week', requireAuth, async (req, res) => {
 // Starta servern
 // ------------------------------------------------------------------
 
-app.listen(PORT, HOST, () => {
-  console.log(`Bygglogg körs på http://${HOST}:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  const address = server.address();
+  console.log(`Bygglogg körs på http://${HOST}:${address.port}`);
 });

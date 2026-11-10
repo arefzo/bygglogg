@@ -162,7 +162,7 @@ function shell(route, viewHtml) {
           <div class="sidebar-foot">
             <strong>${esc(state.settings.companyName)}</strong>
             <span>${esc(user.name)} · ${esc(ROLES[user.role]?.label ?? user.role)}</span>
-            <span style="margin-top:8px">Data sparas säkert på servern</span>
+            <span style="margin-top:8px">Data sparas på servern · synkas mellan enheter</span>
           </div>
         </aside>
 

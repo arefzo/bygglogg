@@ -1,8 +1,6 @@
 # Bygglogg
 
-En fristående webbapp för byggarbetsplatsen: **dagbok, tidsrapportering och skyddsrond** i ett minimalistiskt nordiskt gränssnitt. Byggd utan ramverk, byggsteg eller externa beroenden – vanilla ES-moduler, localStorage och en liten Node-server.
-
-All data sparas lokalt i webbläsaren.
+En webbapp för byggarbetsplatsen: **dagbok, tidsrapportering och skyddsrond** i ett minimalistiskt nordiskt gränssnitt. Gränssnittet använder vanilla ES-moduler och en Node/Express-server. Verksamhetsdata sparas på servern och synkas automatiskt till inloggade enheter.
 
 ## Funktioner
 
@@ -81,9 +79,17 @@ server.mjs
 
 Minimalistisk nordisk palett: varm beige canvas, vita kort, slategrå navigation, stålblå etiketter och gul primäråtgärd. Inga skuggor – endast tunna linjer, 8 px radie och tät typografi. Responsiv ned till mobil, med utskriftsläge.
 
+## Serverlagring och synk
+
+- Alla verksamhetsändringar sparas på servern i `data.json`; webbläsarens localStorage innehåller endast inloggning och personliga vyinställningar.
+- Inloggade webbläsare hämtar serverändringar automatiskt var fjärde sekund. Inloggning fungerar samtidigt på flera enheter.
+- Servern skriver filen atomiskt och köar samtidiga ändringar för att undvika att två enheter skriver över varandra.
+- För Render ska en persistent disk monteras på `/var/data` med miljövariabeln `DATA_DIR=/var/data`. Render Free har ett tillfälligt filsystem och får inte användas för permanent JSON-lagring.
+- Starta lokalt med `npm start`. Ange `DATA_DIR` för att spara i en annan mapp.
+
 ## Begränsningar
 
-- Data sparas lokalt i webbläsaren (localStorage). Ingen server, ingen synk mellan enheter.
+- En persistent fil-disk är avsedd för en serverinstans. För att skala till flera instanser behövs en gemensam databas.
 - PDF-generering på server, integrationer och e-post ingår inte.
 - Tidsmotorn tolkar svenska uttryck.
 - Skyddsrondens AFS-hänvisningar är vägledande och ersätter inte officiell dokumentation från Arbetsmiljöverket (av.se).

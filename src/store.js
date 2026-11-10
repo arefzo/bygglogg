@@ -8,6 +8,9 @@ const API_BASE = '';
 
 let state = null;
 let authToken = null;
+let serverRevision = -1;
+let syncTimer = null;
+let syncInFlight = false;
 const listeners = new Set();
 
 async function api(path, options = {}) {
@@ -33,7 +36,49 @@ async function api(path, options = {}) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Fel ${res.status}`);
   }
-  return res.json();
+  const result = await res.json();
+  if (!['GET', 'HEAD'].includes((options.method ?? 'GET').toUpperCase())) {
+    scheduleSync();
+  }
+  return result;
+}
+
+function scheduleSync() {
+  if (!authToken || !state) return;
+  window.setTimeout(() => refreshFromServer(), 100);
+}
+
+async function refreshFromServer() {
+  if (!authToken || !state || syncInFlight) return;
+  syncInFlight = true;
+  try {
+    const response = await fetch(`${API_BASE}/api/sync?since=${serverRevision}`, {
+      headers: { Authorization: authToken },
+    });
+    if (response.status === 304) return;
+    if (response.status === 401) {
+      await api('/api/me').catch(() => {});
+      return;
+    }
+    if (!response.ok) throw new Error(`Synkfel ${response.status}`);
+    const snapshot = await response.json();
+    if (Number(snapshot.revision) !== serverRevision) {
+      serverRevision = Number(snapshot.revision) || 0;
+      state = snapshot.data;
+      notifyListeners();
+    }
+  } catch (error) {
+    console.warn('Kunde inte synka med servern.', error);
+  } finally {
+    syncInFlight = false;
+  }
+}
+
+function startSync() {
+  if (syncTimer !== null) window.clearInterval(syncTimer);
+  syncTimer = null;
+  if (!authToken || !state) return;
+  syncTimer = window.setInterval(refreshFromServer, 4000);
 }
 
 export async function initStore() {
@@ -55,25 +100,19 @@ export async function initStore() {
     auth.loggedIn = true;
     auth.currentUserId = me.id;
     auth.email = me.email;
-    const [projects, users, templates, activities, entries, timeReports, inspections, drawings, fika, settings] = await Promise.all([
-      api('/api/projects'),
-      api('/api/users'),
-      api('/api/templates'),
-      api('/api/activities'),
-      api('/api/entries'),
-      api('/api/timeReports'),
-      api('/api/inspections'),
-      api('/api/drawings'),
-      api('/api/fika'),
-      api('/api/settings'),
-    ]);
-    state = { projects, users, templates, activities, entries, timeReports, inspections, drawings, fika, settings };
+    const snapshot = await api('/api/sync');
+    serverRevision = Number(snapshot.revision) || 0;
+    state = snapshot.data;
+    startSync();
   } else {
     auth.token = null;
     auth.loggedIn = false;
     auth.currentUserId = null;
     auth.email = '';
     state = null;
+    serverRevision = -1;
+    if (syncTimer !== null) window.clearInterval(syncTimer);
+    syncTimer = null;
   }
 
   if (!state) {
@@ -155,7 +194,15 @@ export const auth = {
     return true;
   },
 
-  logout() {
+  async logout() {
+    try {
+      if (authToken) {
+        await fetch(`${API_BASE}/api/logout`, {
+          method: 'POST',
+          headers: { Authorization: authToken },
+        });
+      }
+    } catch { /* logga ut lokalt även om servern inte kan nås */ }
     this.token = null;
     authToken = null;
     this.loggedIn = false;
@@ -163,6 +210,9 @@ export const auth = {
     this.email = '';
     localStorage.removeItem('bygglogg.auth');
     state = null;
+    serverRevision = -1;
+    if (syncTimer !== null) window.clearInterval(syncTimer);
+    syncTimer = null;
     listeners.forEach((listener) => listener(state));
   },
 
