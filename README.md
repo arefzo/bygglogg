@@ -81,16 +81,18 @@ Minimalistisk nordisk palett: varm beige canvas, vita kort, slategrå navigation
 
 ## Serverlagring och synk
 
-- Alla verksamhetsändringar sparas på servern i `data.json`; webbläsarens localStorage innehåller endast inloggning och personliga vyinställningar.
+- Alla verksamhetsändringar sparas på servern; webbläsarens localStorage innehåller endast inloggning och personliga vyinställningar. Lokalt används `data.json`; när `DATABASE_URL` anges används PostgreSQL.
 - Inloggade webbläsare hämtar serverändringar automatiskt var fjärde sekund. Inloggning fungerar samtidigt på flera enheter.
-- Servern skriver filen atomiskt och köar samtidiga ändringar för att undvika att två enheter skriver över varandra.
-- För Render ska en persistent disk monteras på `/var/data` med miljövariabeln `DATA_DIR=/var/data`. Render Free har ett tillfälligt filsystem och får inte användas för permanent JSON-lagring.
-- När Render-disken är tom skapas administratörskontot från `BOOTSTRAP_ADMIN_EMAIL` och `BOOTSTRAP_ADMIN_PASSWORD`. Blueprinten ber om lösenordet privat; lösenordet läggs inte i GitHub.
+- Servern köar samtidiga ändringar för att undvika att två enheter skriver över varandra.
+- Render Free använder Neon PostgreSQL via `DATABASE_URL`; Blueprinten ber om databasens anslutningssträng och administratörslösenordet privat. Inga hemligheter läggs i GitHub.
+- När databasen är tom skapas administratörskontot från `BOOTSTRAP_ADMIN_EMAIL` och `BOOTSTRAP_ADMIN_PASSWORD`.
+- Skapa en Neon Free-databas och använd den poolade anslutningssträngen som Render frågar efter när Blueprinten skapas.
+- Render Free går i viloläge efter inaktivitet. Neon Free kan också pausa sin beräkningsdel när databasen inte används.
 - Starta lokalt med `npm start`. Ange `DATA_DIR` för att spara i en annan mapp.
 
 ## Begränsningar
 
-- En persistent fil-disk är avsedd för en serverinstans. För att skala till flera instanser behövs en gemensam databas.
+- Utan `DATABASE_URL` sparas data i lokal `data.json`. För att skala till flera instanser behövs en gemensam PostgreSQL-databas.
 - PDF-generering på server, integrationer och e-post ingår inte.
 - Tidsmotorn tolkar svenska uttryck.
 - Skyddsrondens AFS-hänvisningar är vägledande och ersätter inte officiell dokumentation från Arbetsmiljöverket (av.se).

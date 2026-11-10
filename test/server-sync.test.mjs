@@ -23,6 +23,7 @@ test('server data persists, syncs between clients, and keeps multi-device sessio
         HOST: '127.0.0.1',
         PORT: '0',
         DATA_DIR: dataDir,
+        DATABASE_URL: '',
         BOOTSTRAP_ADMIN_EMAIL: 'admin@example.test',
         BOOTSTRAP_ADMIN_PASSWORD: 'test-password',
       },

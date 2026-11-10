@@ -1,6 +1,7 @@
 // Bygglogg – Express-server med API för datalagring på servern.
 // Kör: node server.mjs
 import express from 'express';
+import pg from 'pg';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,13 @@ const PORT = process.env.PORT === undefined ? 4173 : Number(process.env.PORT);
 const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 const DATA_DIR = resolve(process.env.DATA_DIR || ROOT);
 const DATA_FILE = join(DATA_DIR, 'data.json');
+const { Pool } = pg;
+const database = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, max: 3, idleTimeoutMillis: 10000 })
+  : null;
+database?.on('error', (error) => {
+  console.error('PostgreSQL pool error:', error.message);
+});
 
 const app = express();
 app.use(express.json());
@@ -40,47 +48,96 @@ function hashPassword(password) {
 }
 
 async function readData() {
+  if (database) {
+    const result = await database.query('SELECT payload FROM bygglogg_state WHERE id = 1');
+    return result.rows[0]?.payload ?? createDefaultData();
+  }
+
   try {
     const raw = await readFile(DATA_FILE, 'utf-8');
     return JSON.parse(raw);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return {
-      version: 1,
-      revision: 0,
-      settings: {
-        companyName: 'INCON AB',
-        orgNumber: '556123-4567',
-        workdayHours: 8,
-        lunchMinutes: 30,
-        autoLunch: true,
-        weekStart: 1,
-        reportLimitDays: 7,
-      },
-      projects: [],
-      users: [],
-      templates: [],
-      activities: [],
-      entries: [],
-      timeReports: [],
-      inspections: [],
-      photos: {},
-      drawings: [],
-      fika: [],
-    };
+    return createDefaultData();
   }
 }
 
+function createDefaultData() {
+  return {
+    version: 1,
+    revision: 0,
+    settings: {
+      companyName: 'INCON AB',
+      orgNumber: '556123-4567',
+      workdayHours: 8,
+      lunchMinutes: 30,
+      autoLunch: true,
+      weekStart: 1,
+      reportLimitDays: 7,
+    },
+    projects: [],
+    users: [],
+    templates: [],
+    activities: [],
+    entries: [],
+    timeReports: [],
+    inspections: [],
+    photos: {},
+    drawings: [],
+    fika: [],
+  };
+}
+
 async function writeData(data) {
-  await mkdir(DATA_DIR, { recursive: true });
   data.revision = (Number(data.revision) || 0) + 1;
   data.updatedAt = new Date().toISOString();
+  if (database) {
+    await database.query(
+      `INSERT INTO bygglogg_state (id, payload) VALUES (1, $1::jsonb)
+       ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload`,
+      [JSON.stringify(data)],
+    );
+    return;
+  }
+  await mkdir(DATA_DIR, { recursive: true });
   const tempFile = join(DATA_DIR, `.data-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`);
   await writeFile(tempFile, JSON.stringify(data, null, 2), 'utf-8');
   await rename(tempFile, DATA_FILE);
 }
 
 async function initializeData() {
+  if (database) {
+    await database.query(`
+      CREATE TABLE IF NOT EXISTS bygglogg_state (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        payload JSONB NOT NULL
+      )
+    `);
+    const current = await database.query('SELECT id FROM bygglogg_state WHERE id = 1');
+    if (current.rowCount) return;
+    const data = createDefaultData();
+    const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim();
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+    if (email && password) {
+      data.users.push({
+        id: `usr_${crypto.randomBytes(8).toString('hex')}`,
+        name: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || 'Administratör',
+        email,
+        role: 'admin',
+        active: true,
+        projectIds: [],
+        passwordHash: hashPassword(password),
+        sessionToken: null,
+        sessionTokens: [],
+      });
+    }
+    await database.query(
+      'INSERT INTO bygglogg_state (id, payload) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING',
+      [JSON.stringify(data)],
+    );
+    return;
+  }
+
   await mkdir(DATA_DIR, { recursive: true });
   try {
     await readFile(DATA_FILE, 'utf-8');

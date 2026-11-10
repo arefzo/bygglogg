@@ -2,18 +2,14 @@ services:
   - type: web
     name: bygglogg
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: bygglogg-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
-      - key: DATA_DIR
-        value: /var/data
+      - key: DATABASE_URL
+        sync: false
       - key: BOOTSTRAP_ADMIN_EMAIL
         value: aref@incon.se
       - key: BOOTSTRAP_ADMIN_PASSWORD
