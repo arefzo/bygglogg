@@ -1,0 +1,14 @@
+{
+  "name": "bygglogg",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dagbok, tidsrapportering och skyddsrond för byggarbetsplatsen med serverbaserad lagring.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
