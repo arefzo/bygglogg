@@ -601,7 +601,7 @@ export function renderInspectionDetail(id) {
             <div class="row-between small"><span class="muted">Mall</span><span>${esc(inspection.templateName)}</span></div>
             <div class="row-between small"><span class="muted">Utförd av</span><span>${esc(userName(inspection.inspectorId))}</span></div>
             <div class="row-between small"><span class="muted">Datum</span><span>${esc(formatDate(inspection.date, { year: true }))}</span></div>
-            <div class="row-between small"><span class="muted">Skapad</span><span>${esc(formatDate(inspection.createdAt.slice(0, 10)))}</span></div>
+            <div class="row-between small"><span class="muted">Skapad</span><span>${esc(inspection.createdAt ? formatDate(inspection.createdAt.slice(0, 10)) : '—')}</span></div>
           </div>
         </section>
       </div>
