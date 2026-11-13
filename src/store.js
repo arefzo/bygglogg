@@ -356,10 +356,10 @@ const isoDate = (date) => {
 };
 
 export const actions = {
-  addEntry({ projectId, type, text, weather, date, publish = false }) {
+  addEntry({ projectId, type, types, text, weather, date, publish = false }) {
     return api('/api/entries', {
       method: 'POST',
-      body: JSON.stringify({ projectId, type, text, weather, date, publish }),
+      body: JSON.stringify({ projectId, type, types, text, weather, date, publish }),
     });
   },
 

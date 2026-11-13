@@ -51,24 +51,58 @@ function dayData(date, projectIds, isClient) {
   };
 }
 
-function typeChips(selected = 'arbete') {
+function typeChips(selected = ['arbete']) {
+  const selectedTypes = new Set(Array.isArray(selected) ? selected : [selected]);
   return Object.entries(ENTRY_TYPES)
     .map(
       ([value, type]) => `
-      <button type="button" class="chip${value === selected ? ' active' : ''}" data-type="${value}">
+      <button type="button" class="chip${selectedTypes.has(value) ? ' active' : ''}" data-type="${value}" aria-pressed="${selectedTypes.has(value)}">
         ${esc(type.label)}
       </button>`,
     )
     .join('');
 }
 
+function mountTypeSelector(form) {
+  const primaryInput = form.querySelector('[data-type-input]');
+  const valuesHost = form.querySelector('[data-type-values]');
+  if (!primaryInput || !valuesHost) return;
+
+  form.querySelectorAll('[data-type]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const selected = new Set(
+        [...form.querySelectorAll('[data-type].active')].map((item) => item.dataset.type),
+      );
+      const value = chip.dataset.type;
+      if (selected.has(value)) {
+        if (selected.size === 1) return;
+        selected.delete(value);
+      } else {
+        selected.add(value);
+      }
+      const types = [...selected];
+      primaryInput.value = types[0];
+      valuesHost.innerHTML = types
+        .map((type) => `<input type="hidden" name="types" value="${type}" />`)
+        .join('');
+      form.querySelectorAll('[data-type]').forEach((item) => {
+        const active = selected.has(item.dataset.type);
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+    });
+  });
+}
+
 function editorFields({ entry = null, projects, canPublish }) {
   const projectId = entry?.projectId ?? projects[0]?.id ?? '';
   const prefix = entry ? 'edit' : 'new';
+  const selectedTypes = entry?.types?.length ? entry.types : [entry?.type ?? 'arbete'];
   return `
-    <input type="hidden" name="type" value="${entry?.type ?? 'arbete'}" data-type-input />
-    <div class="chip-row" data-type-chips>
-      ${typeChips(entry?.type ?? 'arbete')}
+    <input type="hidden" name="type" value="${esc(selectedTypes[0])}" data-type-input />
+    <div data-type-values>${selectedTypes.map((type) => `<input type="hidden" name="types" value="${esc(type)}" />`).join('')}</div>
+    <div class="chip-row" data-type-chips role="group" aria-label="Kategorier, välj en eller flera">
+      ${typeChips(selectedTypes)}
     </div>
     <div class="field">
       <label for="${prefix}-entry-text">Vad har hänt på plats?</label>
@@ -131,12 +165,13 @@ function editorHtml({ entry = null, projects, canPublish }) {
 }
 
 function entryHtml(entry, { canWrite, canPublish, canComment }) {
-  const type = ENTRY_TYPES[entry.type] ?? ENTRY_TYPES.arbete;
+  const types = Array.isArray(entry.types) && entry.types.length ? entry.types : [entry.type ?? 'arbete'];
+  const typeBadges = types.map((value) => ENTRY_TYPES[value]).filter(Boolean);
   const comments = entry.comments ?? [];
   return `
-    <article class="entry${entry.type === 'hinder' ? ' obstruction' : ''}">
+    <article class="entry${types.includes('hinder') ? ' obstruction' : ''}">
       <div class="entry-head">
-        ${badge(type.label, type.tone)}
+        ${typeBadges.map((type) => badge(type.label, type.tone)).join('')}
         <span class="entry-time">${timeOf(entry.createdAt)}</span>
         <span class="small muted">${esc(projectName(entry.projectId))}</span>
         ${entry.published ? '' : badge('Utkast', 'muted')}
@@ -400,15 +435,7 @@ export function mountDaybook(root) {
   // Typval i editorn
   const composer = root.querySelector('[data-entry-form]');
   if (composer) {
-    const hidden = composer.querySelector('[data-type-input]');
-    composer.querySelectorAll('[data-type]').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        hidden.value = chip.dataset.type;
-        composer
-          .querySelectorAll('[data-type]')
-          .forEach((other) => other.classList.toggle('active', other === chip));
-      });
-    });
+    mountTypeSelector(composer);
 
     composer.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -422,6 +449,7 @@ export function mountDaybook(root) {
         await actions.addEntry({
           projectId: data.get('projectId') || projectIds[0],
           type: data.get('type') || 'arbete',
+          types: data.getAll('types'),
           text,
           weather: data.get('weather') || '',
           temperature: data.get('temperature') ? Number(data.get('temperature')) : null,
@@ -452,7 +480,7 @@ export function mountDaybook(root) {
           <button type="button" class="btn" data-close>Avbryt</button>
           <button type="submit" class="btn btn-primary">Spara</button>
         </div>`,
-        onSubmit: async (data) => {
+        onSubmit: async (data, form) => {
           const text = String(data.text ?? '').trim();
           if (text.length < 3) {
             toast('Texten är för kort.', 'bad');
@@ -461,6 +489,7 @@ export function mountDaybook(root) {
           try {
             await actions.updateEntry(entry.id, {
               type: data.type || entry.type,
+              types: new FormData(form).getAll('types'),
               text,
               weather: data.weather ?? '',
               temperature: data.temperature ? Number(data.temperature) : null,
@@ -475,15 +504,7 @@ export function mountDaybook(root) {
       });
 
       const form = dialog.querySelector('form');
-      const hidden = form.querySelector('[data-type-input]');
-      form.querySelectorAll('[data-type]').forEach((chip) => {
-        chip.addEventListener('click', () => {
-          hidden.value = chip.dataset.type;
-          form
-            .querySelectorAll('[data-type]')
-            .forEach((other) => other.classList.toggle('active', other === chip));
-        });
-      });
+      mountTypeSelector(form);
     });
   });
 

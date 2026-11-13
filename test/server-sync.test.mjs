@@ -140,12 +140,27 @@ test('server data persists, syncs between clients, and keeps multi-device sessio
   });
   assert.equal(signResponse.status, 200);
 
+  const entryResponse = await authenticated('/api/entries', firstDeviceToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      id: 'entry-multiselect',
+      projectId: 'p1',
+      type: 'arbete',
+      types: ['arbete', 'material', 'besok'],
+      text: 'Multiple daybook categories',
+      date: '2026-11-13',
+    }),
+  });
+  assert.equal(entryResponse.status, 201);
+
   const sharedInspectionSnapshot = await authenticated('/api/sync', secondDeviceToken);
   const sharedInspectionData = (await sharedInspectionSnapshot.json()).data;
   const sharedInspection = sharedInspectionData.inspections.find((item) => item.id === inspection.id);
   assert.equal(sharedInspection.status, 'signerad');
   assert.equal(sharedInspection.signedBy, user.id);
   assert.ok(sharedInspection.signedAt);
+  const sharedEntry = sharedInspectionData.entries.find((item) => item.id === 'entry-multiselect');
+  assert.deepEqual(sharedEntry.types, ['arbete', 'material', 'besok']);
 
   const unchanged = await authenticated(`/api/sync?since=${initialSnapshot.revision}`, secondDeviceToken);
   assert.equal(unchanged.status, 200);
