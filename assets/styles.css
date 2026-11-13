@@ -1549,6 +1549,27 @@ dialog::backdrop {
   .main {
     padding: 20px 16px 48px;
   }
+  .inspection-item-head {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .inspection-label {
+    width: 100%;
+    min-width: 0;
+  }
+  .inspection-item-head > .segmented {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+  .inspection-item-head > .segmented button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 5px;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .grid-3,
   .grid-2 {
     grid-template-columns: minmax(0, 1fr);

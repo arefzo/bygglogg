@@ -106,6 +106,46 @@ test('server data persists, syncs between clients, and keeps multi-device sessio
     body: JSON.stringify({ id, name: `Project ${id}` }),
   })));
   assert.deepEqual(writes.map((response) => response.status), [201, 201]);
+  const templateResponse = await authenticated('/api/templates', firstDeviceToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      id: 'safety-template',
+      name: 'Safety check',
+      items: [{ id: 'point-1', group: 'Site safety', label: 'Access is clear' }],
+    }),
+  });
+  assert.equal(templateResponse.status, 201);
+
+  const inspectionResponse = await authenticated('/api/inspections', firstDeviceToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      id: 'inspection-1',
+      templateId: 'safety-template',
+      projectId: 'p1',
+      date: '2026-11-13',
+      title: 'Weekly safety check',
+      inspectorId: user.id,
+    }),
+  });
+  assert.equal(inspectionResponse.status, 201);
+  const inspection = await inspectionResponse.json();
+  const answerResponse = await authenticated(
+    `/api/inspections/${inspection.id}/items/${inspection.items[0].id}`,
+    firstDeviceToken,
+    { method: 'PUT', body: JSON.stringify({ result: 'godkand' }) },
+  );
+  assert.equal(answerResponse.status, 200);
+  const signResponse = await authenticated(`/api/inspections/${inspection.id}/sign`, firstDeviceToken, {
+    method: 'POST',
+  });
+  assert.equal(signResponse.status, 200);
+
+  const sharedInspectionSnapshot = await authenticated('/api/sync', secondDeviceToken);
+  const sharedInspectionData = (await sharedInspectionSnapshot.json()).data;
+  const sharedInspection = sharedInspectionData.inspections.find((item) => item.id === inspection.id);
+  assert.equal(sharedInspection.status, 'signerad');
+  assert.equal(sharedInspection.signedBy, user.id);
+  assert.ok(sharedInspection.signedAt);
 
   const unchanged = await authenticated(`/api/sync?since=${initialSnapshot.revision}`, secondDeviceToken);
   assert.equal(unchanged.status, 200);

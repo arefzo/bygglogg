@@ -33,8 +33,10 @@ import { mountPhotoRoll, openPhotoDialog } from '../components.js';
 const openDeviations = (inspection) =>
   inspection.items.filter((item) => item.result === 'avvikelse' && !item.resolved);
 
+const isFinished = (inspection) => ['klar', 'signerad'].includes(inspection.status);
+
 function statusBadge(inspection) {
-  return inspection.status === 'klar'
+  return isFinished(inspection)
     ? badge('Signerad', 'ok')
     : badge('Pågår', 'steel');
 }
@@ -149,7 +151,7 @@ export function renderInspections() {
     projectIds.includes(inspection.projectId),
   );
   const active = inspections.filter((inspection) => inspection.status === 'pagaende');
-  const done = inspections.filter((inspection) => inspection.status === 'klar');
+  const done = inspections.filter((inspection) => isFinished(inspection));
   const deviations = inspections
     .flatMap((inspection) =>
       inspection.items
@@ -169,7 +171,7 @@ export function renderInspections() {
             const progress = inspectionProgress(inspection);
             const open = openDeviations(inspection).length;
             return `<a class="admin-row" href="#/skyddsrond/${inspection.id}" style="text-decoration:none;color:inherit">
-              <span class="dot ${inspection.status === 'klar' ? 'ok' : open ? 'bad' : 'warn'}"></span>
+              <span class="dot ${isFinished(inspection) ? 'ok' : open ? 'bad' : 'warn'}"></span>
               <div class="admin-row-main">
                 <strong>${esc(inspection.title)}</strong>
                 <span>${esc(projectName(inspection.projectId))} · ${esc(
@@ -178,7 +180,7 @@ export function renderInspections() {
               </div>
               <div class="row" style="gap:14px">
                 ${
-                  inspection.status === 'klar'
+                  isFinished(inspection)
                     ? badge('Signerad', 'ok')
                     : open
                       ? badge(`${open} avvikelse${open === 1 ? '' : 'r'}`, 'bad')
@@ -414,7 +416,7 @@ function deviationFields(item, inspection, readOnly) {
 
 function checklistHtml(inspection, { canEdit, canSign }) {
   const groups = groupBy(inspection.items, (item) => item.group);
-  const readOnly = inspection.status === 'klar' || !canEdit;
+  const readOnly = isFinished(inspection) || !canEdit;
 
   return [...groups.entries()]
     .map(
@@ -484,7 +486,7 @@ export function renderInspectionDetail(id) {
   const canEdit = can('startInspection', user);
   const canSign = can('signInspection', user) && inspection.status === 'pagaende';
   const canDelete = can('signInspection', user);
-  const finished = inspection.status === 'klar';
+  const finished = isFinished(inspection);
 
   return `
     <header class="page-head">
